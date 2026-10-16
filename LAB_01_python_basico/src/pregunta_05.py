@@ -1,3 +1,6 @@
+import csv
+import gzip
+
 def pregunta_05():
     """
     Para cada letra de la primera columna (`letter`), encuentre el valor
@@ -9,4 +12,14 @@ def pregunta_05():
         [("A", 9, 2), ("B", 9, 1), ...]
     """
 
-    raise NotImplementedError
+    extremos = {}
+    with gzip.open("data/data.csv.gz", "rt", encoding="utf-8") as archivo:
+        for fila in csv.reader(archivo, delimiter="\t"):
+            letra = fila[0]
+            valor = int(fila[1])
+            if letra not in extremos:
+                extremos[letra] = (valor, valor)
+            else:
+                maximo, minimo = extremos[letra]
+                extremos[letra] = (max(maximo, valor), min(minimo, valor))
+    return [(letra, maximo, minimo) for letra, (maximo, minimo) in sorted(extremos.items())]

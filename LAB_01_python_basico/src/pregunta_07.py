@@ -1,3 +1,6 @@
+import csv
+import gzip
+
 def pregunta_07():
     """
     Para cada valor distinto de la segunda columna (`value`), construya la
@@ -11,4 +14,12 @@ def pregunta_07():
         [(0, ["C"]), (1, ["E", "B", "E"]), (2, ["A", "E"]), ...]
     """
 
-    raise NotImplementedError
+    groups = {}
+    with gzip.open("data/data.csv.gz", "rt", encoding="utf-8") as archivo:
+        for fila in csv.reader(archivo, delimiter="\t"):
+            letra = fila[0]
+            valor = int(fila[1])
+            if valor not in groups:
+                groups[valor] = []
+            groups[valor].append(letra)
+    return sorted(groups.items())
