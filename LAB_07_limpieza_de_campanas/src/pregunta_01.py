@@ -1,5 +1,5 @@
+from pathlib import Path
 import pandas as pd
-
 
 def clean_campaign_data() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """
@@ -43,4 +43,50 @@ def clean_campaign_data() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
         ...
     """
 
-    raise NotImplementedError
+    tablas = []
+    for ruta_archivo in sorted(Path("data").glob("bank-marketing-campaing-*.csv.gz")):
+        tabla = pd.read_csv(ruta_archivo)
+        tablas.append(tabla)
+    datos = pd.concat(tablas, ignore_index=True)
+    datos = datos.sort_values("client_id").reset_index(drop=True)
+
+    client = datos[[
+        "client_id", "age", "job", "marital", "education",
+        "credit_default", "mortgage",
+    ]].copy()
+    client["job"] = client["job"].str.replace(".", "", regex=False)
+    client["job"] = client["job"].str.replace("-", "_", regex=False)
+    client["education"] = client["education"].str.replace(".", "_", regex=False)
+    client["education"] = client["education"].replace("unknown", pd.NA)
+    for columna in ["credit_default", "mortgage"]:
+        client[columna] = (client[columna] == "yes").astype(int)
+
+    campaign = datos[[
+        "client_id", "number_contacts", "contact_duration",
+        "previous_campaign_contacts", "previous_outcome", "campaign_outcome",
+    ]].copy()
+    campaign["previous_outcome"] = (campaign["previous_outcome"] == "success").astype(int)
+    campaign["campaign_outcome"] = (campaign["campaign_outcome"] == "yes").astype(int)
+
+    # Usamos un diccionario para que los meses no dependan del idioma del equipo.
+    meses = {
+        "jan": 1, "feb": 2, "mar": 3, "apr": 4,
+        "may": 5, "jun": 6, "jul": 7, "aug": 8,
+        "sep": 9, "oct": 10, "nov": 11, "dec": 12,
+    }
+    fechas = pd.to_datetime({
+        "year": 2022,
+        "month": datos["month"].map(meses),
+        "day": datos["day"],
+    })
+    campaign["last_contact_date"] = fechas.dt.strftime("%Y-%m-%d")
+
+    economics = datos[["client_id", "cons_price_idx", "euribor_three_months"]].copy()
+
+    carpeta_salida = Path("submission")
+    carpeta_salida.mkdir(exist_ok=True)
+    client.to_csv(carpeta_salida / "client.csv", index=False)
+    campaign.to_csv(carpeta_salida / "campaign.csv", index=False)
+    economics.to_csv(carpeta_salida / "economics.csv", index=False)
+
+    return client, campaign, economics
