@@ -1,3 +1,6 @@
+import pandas as pd
+
+
 def pregunta_11():
     """
     En `data/tbl1.tsv`, cada valor de la columna `c0` aparece en varias
@@ -15,4 +18,12 @@ def pregunta_11():
         ...
     """
 
-    raise NotImplementedError
+    tabla = pd.read_csv("data/tbl1.tsv", sep="\t")
+
+    def unir_letras(letras):
+        letras_ordenadas = sorted(letras)
+        return ",".join(letras_ordenadas)
+
+    resultado = tabla.groupby("c0")["c4"].agg(unir_letras)
+    resultado = resultado.sort_index().reset_index()
+    return resultado

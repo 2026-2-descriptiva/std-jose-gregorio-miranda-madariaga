@@ -1,3 +1,6 @@
+import pandas as pd
+
+
 def pregunta_12():
     """
     En `data/tbl2.tsv`, cada valor de la columna `c0` aparece en varias
@@ -15,4 +18,15 @@ def pregunta_12():
         ...
     """
 
-    raise NotImplementedError
+    tabla = pd.read_csv("data/tbl2.tsv", sep="\t")
+
+    # Formamos cada pareja antes de agrupar por identificador.
+    tabla["c5"] = tabla["c5a"] + ":" + tabla["c5b"].astype(str)
+
+    def unir_parejas(parejas):
+        parejas_ordenadas = sorted(parejas)
+        return ",".join(parejas_ordenadas)
+
+    resultado = tabla.groupby("c0")["c5"].agg(unir_parejas)
+    resultado = resultado.sort_index().reset_index()
+    return resultado

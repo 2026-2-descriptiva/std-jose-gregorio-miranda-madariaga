@@ -1,3 +1,6 @@
+import pandas as pd
+
+
 def pregunta_09():
     """
     Retorne la tabla `data/tbl0.tsv` completa con una columna adicional
@@ -13,4 +16,7 @@ def pregunta_09():
         ...
     """
 
-    raise NotImplementedError
+    tabla = pd.read_csv("data/tbl0.tsv", sep="\t")
+
+    tabla["year"] = tabla["c3"].str[:4]
+    return tabla

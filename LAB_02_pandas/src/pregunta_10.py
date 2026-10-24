@@ -1,3 +1,6 @@
+import pandas as pd
+
+
 def pregunta_10():
     """
     Usando `data/tbl0.tsv`, construya para cada categoría de la columna `c1`
@@ -15,4 +18,15 @@ def pregunta_10():
         ...
     """
 
-    raise NotImplementedError
+    tabla = pd.read_csv("data/tbl0.tsv", sep="\t")
+
+    def unir_valores(valores):
+        valores_ordenados = sorted(valores)
+        textos = []
+        for valor in valores_ordenados:
+            textos.append(str(valor))
+        return ":".join(textos)
+
+    resultado = tabla.groupby("c1")["c2"].agg(unir_valores)
+    resultado = resultado.sort_index().to_frame()
+    return resultado
