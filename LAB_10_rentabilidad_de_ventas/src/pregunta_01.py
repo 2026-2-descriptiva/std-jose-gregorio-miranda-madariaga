@@ -1,5 +1,5 @@
+from pathlib import Path
 import pandas as pd
-
 
 def pregunta_01() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """
@@ -50,4 +50,66 @@ def pregunta_01() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
         ...
     """
 
-    raise NotImplementedError
+    datos = pd.read_csv("data/superstore_orders.csv.gz", sep=";", decimal=",")
+    datos["loss_line"] = datos["Profit"] < 0
+    datos["lost_profit"] = -datos["Profit"].clip(upper=0)
+
+    ventas = datos["Sales"].sum()
+    utilidad = datos["Profit"].sum()
+    resumen = pd.DataFrame([{
+        "lines": len(datos),
+        "orders": datos["Order ID"].nunique(),
+        "sales": ventas,
+        "profit": utilidad,
+        "profit_margin": utilidad / ventas,
+        "loss_lines": datos["loss_line"].sum(),
+        "loss_line_rate": datos["loss_line"].mean(),
+        "lost_profit": datos["lost_profit"].sum(),
+    }])
+
+    def clasificar_descuento(descuento):
+        if descuento == 0:
+            return "0%"
+        if descuento <= 0.05:
+            return "1%-5%"
+        if descuento <= 0.10:
+            return "6%-10%"
+        return "más de 10%"
+
+    datos["discount_band"] = datos["Discount"].apply(clasificar_descuento)
+    descuentos = datos.groupby("discount_band").agg(
+        lines=("Sales", "size"),
+        sales=("Sales", "sum"),
+        profit=("Profit", "sum"),
+        loss_line_rate=("loss_line", "mean"),
+        lost_profit=("lost_profit", "sum"),
+    )
+    descuentos["profit_margin"] = descuentos["profit"] / descuentos["sales"]
+    orden_descuentos = ["0%", "1%-5%", "6%-10%", "más de 10%"]
+    descuentos = descuentos.reindex(orden_descuentos).reset_index()
+    descuentos = descuentos[[
+        "discount_band", "lines", "sales", "profit", "profit_margin",
+        "loss_line_rate", "lost_profit",
+    ]]
+
+    segmentos = datos.groupby(["Customer Segment", "Product Category"]).agg(
+        lines=("Sales", "size"),
+        sales=("Sales", "sum"),
+        profit=("Profit", "sum"),
+        lost_profit=("lost_profit", "sum"),
+    )
+    segmentos["profit_margin"] = segmentos["profit"] / segmentos["sales"]
+    segmentos = segmentos.loc[segmentos["lines"] >= 100]
+    segmentos = segmentos.sort_values("lost_profit", ascending=False).head(5)
+    segmentos = segmentos.reset_index()
+    segmentos = segmentos[[
+        "Customer Segment", "Product Category", "lines", "sales", "profit",
+        "profit_margin", "lost_profit",
+    ]]
+
+    carpeta_salida = Path("submission")
+    carpeta_salida.mkdir(exist_ok=True)
+    resumen.to_csv(carpeta_salida / "profitability_summary.csv", index=False)
+    descuentos.to_csv(carpeta_salida / "discount_summary.csv", index=False)
+    segmentos.to_csv(carpeta_salida / "priority_segments.csv", index=False)
+    return resumen, descuentos, segmentos
