@@ -1,3 +1,6 @@
+from pathlib import Path
+
+import matplotlib.pyplot as plt
 import pandas as pd
 
 
@@ -44,4 +47,60 @@ def build_cohort_analysis() -> pd.DataFrame:
         ...
     """
 
-    raise NotImplementedError
+    datos = pd.read_csv("data/sales.csv.gz")
+    datos["OrderDate"] = pd.to_datetime(datos["OrderDate"])
+
+    # Primera compra de cada cliente y mes de su cohorte.
+    primeras_compras = datos.groupby("CustomerID")["OrderDate"].min()
+    primeras_compras = primeras_compras.reset_index()
+    primeras_compras = primeras_compras.rename(columns={"OrderDate": "first_order_date"})
+    datos = pd.merge(datos, primeras_compras, on="CustomerID")
+    datos["cohort_month"] = datos["first_order_date"].dt.strftime("%Y-%m")
+    datos["period_index"] = (
+        (datos["OrderDate"].dt.year - datos["first_order_date"].dt.year) * 12
+        + datos["OrderDate"].dt.month - datos["first_order_date"].dt.month
+    )
+
+    retencion = datos.groupby(["cohort_month", "period_index"])["CustomerID"].nunique()
+    retencion = retencion.reset_index(name="active_customers")
+    tamanos = retencion[retencion["period_index"] == 0].copy()
+    tamanos = tamanos[["cohort_month", "active_customers"]]
+    tamanos = tamanos.rename(columns={"active_customers": "cohort_size"})
+    retencion = pd.merge(retencion, tamanos, on="cohort_month")
+    retencion["retention_rate"] = retencion["active_customers"] / retencion["cohort_size"]
+    retencion = retencion.sort_values(["cohort_month", "period_index"])
+    retencion = retencion.reset_index(drop=True)
+
+    carpeta_salida = Path("submission")
+    carpeta_salida.mkdir(exist_ok=True)
+    retencion.to_csv(carpeta_salida / "cohort_retention.csv", index=False)
+
+    # Pivot conserva como faltantes los períodos que no aparecen en la tabla.
+    matriz = retencion.pivot(
+        index="cohort_month", columns="period_index", values="retention_rate"
+    )
+    figura, eje = plt.subplots(figsize=(10, 6))
+    imagen = eje.imshow(matriz, cmap="Blues", vmin=0, vmax=1, aspect="auto")
+    eje.set_xticks(range(len(matriz.columns)))
+    eje.set_xticklabels(matriz.columns)
+    eje.set_yticks(range(len(matriz.index)))
+    eje.set_yticklabels(matriz.index)
+    eje.set_xlabel("Meses desde la primera compra")
+    eje.set_ylabel("Mes de la primera compra")
+    eje.set_title("Retención de clientes por cohorte")
+
+    for fila in range(len(matriz.index)):
+        for columna in range(len(matriz.columns)):
+            valor = matriz.iloc[fila, columna]
+            if pd.notna(valor):
+                color = "white" if valor >= 0.6 else "black"
+                eje.text(columna, fila, f"{valor:.0%}", ha="center", va="center", color=color)
+
+    barra = figura.colorbar(imagen, ax=eje)
+    barra.set_label("Retención")
+    barra.set_ticks([0, 0.25, 0.5, 0.75, 1])
+    barra.set_ticklabels(["0%", "25%", "50%", "75%", "100%"])
+    figura.tight_layout()
+    figura.savefig(carpeta_salida / "cohort_retention_heatmap.png", dpi=150)
+    plt.close(figura)
+    return retencion
