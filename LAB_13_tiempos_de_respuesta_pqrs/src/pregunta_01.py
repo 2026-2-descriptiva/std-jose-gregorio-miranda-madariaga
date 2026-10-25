@@ -1,5 +1,5 @@
+from pathlib import Path
 import pandas as pd
-
 
 def pregunta_01() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """
@@ -61,4 +61,71 @@ def pregunta_01() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
         ...
     """
 
-    raise NotImplementedError
+    tablas = []
+    for canal in ["letter", "web"]:
+        ruta = "data/historical_requests_" + canal + ".csv.gz"
+        tabla = pd.read_csv(ruta)
+        tabla = tabla.drop_duplicates().copy()
+        tabla["channel"] = canal
+        tablas.append(tabla)
+    datos = pd.concat(tablas, ignore_index=True)
+    datos["in_date"] = pd.to_datetime(datos["in_date"], format="%Y-%m-%d")
+    datos["out_date"] = pd.to_datetime(datos["out_date"], format="%Y-%m-%d")
+    datos["year"] = datos["in_date"].dt.year
+    datos["answered"] = datos["out_date"].notna()
+    datos["pending"] = datos["out_date"].isna()
+    datos["calendar_days"] = (datos["out_date"] - datos["in_date"]).dt.days
+
+    def contar_dias_habiles(entrada, respuesta):
+        if pd.isna(respuesta):
+            return float("nan")
+        dias = (respuesta - entrada).days
+        semanas, restantes = divmod(dias, 7)
+        habiles = semanas * 5
+        # Excluimos la entrada e incluimos la respuesta, sin contar festivos.
+        for paso in range(1, restantes + 1):
+            dia_semana = (entrada.weekday() + paso) % 7
+            if dia_semana < 5:
+                habiles += 1
+        return habiles
+
+    dias_habiles = []
+    for entrada, respuesta in zip(datos["in_date"], datos["out_date"]):
+        dias_habiles.append(contar_dias_habiles(entrada, respuesta))
+    datos["business_days"] = dias_habiles
+    datos["on_time"] = datos["answered"] & (datos["business_days"] <= 15)
+
+    # size cuenta también las solicitudes sin identificador.
+    grupos = datos.groupby("channel")
+    canales = pd.DataFrame({
+        "requests": grupos.size(),
+        "answered": grupos["answered"].sum(),
+        "pending": grupos["pending"].sum(),
+        "median_business_days": grupos["business_days"].median(),
+        "on_time_rate": grupos["on_time"].mean(),
+    })
+    canales = canales.reset_index().sort_values("channel")
+
+    grupos_anuales = datos.groupby(["year", "channel"])
+    anuales = pd.DataFrame({
+        "requests": grupos_anuales.size(),
+        "pending": grupos_anuales["pending"].sum(),
+        "on_time_rate": grupos_anuales["on_time"].mean(),
+    })
+    anuales = anuales.reset_index().sort_values(["year", "channel"])
+
+    grupos_dias = datos.groupby("day_name")
+    dias = pd.DataFrame({
+        "requests": grupos_dias.size(),
+        "median_calendar_days": grupos_dias["calendar_days"].median(),
+        "median_business_days": grupos_dias["business_days"].median(),
+    })
+    orden_dias = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+    dias = dias.reindex(orden_dias).reset_index()
+
+    carpeta_salida = Path("submission")
+    carpeta_salida.mkdir(exist_ok=True)
+    canales.to_csv(carpeta_salida / "channel_summary.csv", index=False)
+    anuales.to_csv(carpeta_salida / "yearly_summary.csv", index=False)
+    dias.to_csv(carpeta_salida / "entry_day_summary.csv", index=False)
+    return canales, anuales, dias
