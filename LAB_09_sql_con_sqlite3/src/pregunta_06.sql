@@ -27,3 +27,8 @@
 --
 --  Escriba su consulta debajo de esta línea.
 --
+
+SELECT *
+FROM tbl1
+WHERE K0 = 'A'
+ORDER BY c14;

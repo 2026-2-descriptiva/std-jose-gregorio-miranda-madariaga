@@ -26,3 +26,8 @@
 --
 --  Escriba su consulta debajo de esta línea.
 --
+
+SELECT *
+FROM tbl1
+ORDER BY c14
+LIMIT 5;
