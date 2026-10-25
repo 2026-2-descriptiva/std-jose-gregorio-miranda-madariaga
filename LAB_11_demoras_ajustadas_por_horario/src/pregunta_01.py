@@ -1,5 +1,5 @@
+from pathlib import Path
 import pandas as pd
-
 
 def pregunta_01() -> tuple[pd.DataFrame, pd.DataFrame]:
     """
@@ -58,4 +58,58 @@ def pregunta_01() -> tuple[pd.DataFrame, pd.DataFrame]:
         ...
     """
 
-    raise NotImplementedError
+    datos = pd.read_csv("data/flights_by_carrier_day_hour.csv.gz")
+    columnas_vuelos = ["operated_flights", "delayed_departure_15_flights"]
+
+    # Suma de vuelos por hora y tasa nacional de demora.
+    horarios = datos.groupby("scheduled_departure_hour")[columnas_vuelos].sum()
+    horarios = horarios.reset_index()
+    horarios = horarios.sort_values("scheduled_departure_hour")
+    horarios["delay_rate"] = (
+        horarios["delayed_departure_15_flights"] / horarios["operated_flights"]
+    )
+
+    # Unión de cada registro con la tasa nacional de su hora.
+    tasas = horarios[["scheduled_departure_hour", "delay_rate"]]
+    vuelos_con_tasas = pd.merge(
+        datos, tasas, on="scheduled_departure_hour", how="left"
+    )
+    vuelos_con_tasas["expected_delayed_flights"] = (
+        vuelos_con_tasas["operated_flights"] * vuelos_con_tasas["delay_rate"]
+    )
+
+    # Suma por aerolínea y selección de las que tienen suficiente volumen.
+    columnas_sumar = columnas_vuelos + ["expected_delayed_flights"]
+    aerolineas = vuelos_con_tasas.groupby("reporting_airline")[columnas_sumar].sum()
+    aerolineas = aerolineas.reset_index()
+    aerolineas = aerolineas[aerolineas["operated_flights"] >= 100000].copy()
+    aerolineas["delay_rate"] = (
+        aerolineas["delayed_departure_15_flights"] / aerolineas["operated_flights"]
+    )
+    aerolineas["observed_to_expected_ratio"] = (
+        aerolineas["delayed_departure_15_flights"] / aerolineas["expected_delayed_flights"]
+    )
+
+    # La primera fila de cada ordenamiento corresponde a la peor aerolínea.
+    ranking_sin_ajustar = aerolineas.sort_values("delay_rate", ascending=False)
+    ranking_sin_ajustar = ranking_sin_ajustar.reset_index(drop=True)
+    ranking_sin_ajustar["crude_rank"] = range(1, len(ranking_sin_ajustar) + 1)
+
+    ranking_ajustado = aerolineas.sort_values("observed_to_expected_ratio", ascending=False)
+    ranking_ajustado = ranking_ajustado.reset_index(drop=True)
+    ranking_ajustado["adjusted_rank"] = range(1, len(ranking_ajustado) + 1)
+
+    posiciones = ranking_sin_ajustar[["reporting_airline", "crude_rank"]]
+    aerolineas = pd.merge(ranking_ajustado, posiciones, on="reporting_airline")
+    aerolineas = aerolineas.sort_values("adjusted_rank")
+    aerolineas = aerolineas[[
+        "reporting_airline", "operated_flights", "delayed_departure_15_flights",
+        "delay_rate", "expected_delayed_flights", "observed_to_expected_ratio",
+        "crude_rank", "adjusted_rank",
+    ]]
+
+    carpeta_salida = Path("submission")
+    carpeta_salida.mkdir(exist_ok=True)
+    horarios.to_csv(carpeta_salida / "hourly_delay_rates.csv", index=False)
+    aerolineas.to_csv(carpeta_salida / "carrier_adjusted_delays.csv", index=False)
+    return horarios, aerolineas
